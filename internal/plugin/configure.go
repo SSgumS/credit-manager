@@ -48,6 +48,7 @@ func pluginRegistration(schemaVersion uint32) registration {
 				{Name: "settlement.missing_usage", Type: pluginapi.ConfigFieldTypeEnum, EnumValues: []string{"settle_reserved", "release"}, Description: "Settlement when upstream returns no usage."},
 				{Name: "auth_quota.sync_interval", Type: pluginapi.ConfigFieldTypeString, Description: "Background upstream quota sync interval (default 45m, min 10m, 0 disables)."},
 				{Name: "settlement.host_usage_wait", Type: pluginapi.ConfigFieldTypeString, Description: "Deprecated compatibility setting. usage.handle now reprices settled fallback rows without blocking."},
+				{Name: "scheduler.allow_provider_exclusions", Type: pluginapi.ConfigFieldTypeBoolean, Default: false, Description: "Honor trusted X-Credit-Manager-Exclude-Providers headers injected inside nested executions."},
 			},
 		},
 		Capabilities: registrationCapability{

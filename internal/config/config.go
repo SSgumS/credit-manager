@@ -103,6 +103,16 @@ type Config struct {
 	Settlement   SettlementConfig `yaml:"settlement" json:"settlement"`
 	Stream       StreamConfig     `yaml:"stream" json:"stream"`
 	AuthQuota    AuthQuotaConfig  `yaml:"auth_quota" json:"auth_quota"`
+	Scheduler    SchedulerConfig  `yaml:"scheduler" json:"scheduler"`
+}
+
+// SchedulerConfig gates generic scheduler candidate filtering hooks.
+type SchedulerConfig struct {
+	// AllowProviderExclusions honors trusted X-Credit-Manager-Exclude-Providers
+	// headers injected inside nested executions when a reservation ID is
+	// present. Disabled by default; enable only together with plugins that
+	// inject the header inside this plugin's executor boundary.
+	AllowProviderExclusions bool `yaml:"allow_provider_exclusions" json:"allow_provider_exclusions"`
 }
 
 // AuthQuotaConfig controls background upstream quota syncs.

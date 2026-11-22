@@ -20,6 +20,9 @@ type envelope struct {
 type envelopeError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// HTTPStatus surfaces a client-facing status (e.g. 413) through CPA's
+	// plugin error envelope; 0 keeps CPA's default mapping.
+	HTTPStatus int `json:"http_status,omitempty"`
 }
 
 type lifecycleRequest struct {
@@ -86,6 +89,9 @@ type rpcStreamEmitRequest struct {
 type rpcStreamCloseRequest struct {
 	StreamID string `json:"stream_id"`
 	Error    string `json:"error,omitempty"`
+	// ErrorDetail carries the structured status CPA maps to a client-facing
+	// HTTP error when a stream fails before its first chunk.
+	ErrorDetail *pluginabi.Error `json:"error_detail,omitempty"`
 }
 
 func HandleMethod(method string, request []byte) ([]byte, error) {
@@ -163,6 +169,11 @@ func okEnvelope(v any) ([]byte, error) {
 
 func errorEnvelope(code, message string) []byte {
 	raw, _ := json.Marshal(envelope{OK: false, Error: &envelopeError{Code: code, Message: message}})
+	return raw
+}
+
+func errorEnvelopeWithStatus(code, message string, httpStatus int) []byte {
+	raw, _ := json.Marshal(envelope{OK: false, Error: &envelopeError{Code: code, Message: message, HTTPStatus: httpStatus}})
 	return raw
 }
 
