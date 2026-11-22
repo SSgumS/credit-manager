@@ -446,3 +446,30 @@ func TestPickAuthNoUsableCandidates(t *testing.T) {
 		t.Fatalf("all unusable = %t %v", handled, err)
 	}
 }
+
+func TestHasPriorAuthPick(t *testing.T) {
+	s := quotaService(t)
+	ctx := context.Background()
+	if s.HasPriorAuthPick("res-1") {
+		t.Fatal("prior pick reported for unknown reservation")
+	}
+	s.TrackAuthCapture("res-1", "model-x")
+	if s.HasPriorAuthPick("res-1") {
+		t.Fatal("prior pick reported before any pick was bound")
+	}
+	if _, _, err := s.PickAuthForRequest(ctx, "model-x", "", "res-1", []AuthPickCandidate{
+		{ID: "auth-a", Provider: "claude", Status: "active"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !s.HasPriorAuthPick("res-1") {
+		t.Fatal("prior pick not reported after bound pick")
+	}
+	if s.HasPriorAuthPick("  ") || s.HasPriorAuthPick("") {
+		t.Fatal("prior pick reported for blank reservation")
+	}
+	var nilService *Service
+	if nilService.HasPriorAuthPick("res-1") {
+		t.Fatal("nil service reported prior pick")
+	}
+}

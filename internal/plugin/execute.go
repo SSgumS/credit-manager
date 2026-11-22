@@ -86,6 +86,12 @@ func execute(raw []byte) ([]byte, error) {
 	completedAt := time.Now()
 	metrics := usageMetricsFromRequest(body, startedAt, completedAt, resultFromStatus(status))
 	if errHost != nil {
+		if statusCode, ok := hostCallHTTPStatus(errHost); ok && statusCode == http.StatusRequestEntityTooLarge {
+			// Local rejection from a nested interceptor (e.g. Kimi body-size
+			// limit): settle as a zero-cost rejection, never an upstream failure.
+			settleAttemptOrRelease(ctx, svc, reservation, plan.Model, "failed", service.SourceAttemptRejected, "request_too_large")
+			return errorEnvelopeWithStatus("request_too_large", terminatedRequestMessage(errHost), http.StatusRequestEntityTooLarge), nil
+		}
 		settleAttemptOrRelease(ctx, svc, reservation, plan.Model, "failed", service.SourceAttemptFailed, formatAttemptError("upstream_error", errHost))
 		if isAuthConcurrencyError(errHost) {
 			return errorEnvelope("limit_rejected", errHost.Error()), nil
@@ -132,7 +138,7 @@ func executeStream(raw []byte) ([]byte, error) {
 			}
 		}()
 		if err := runStream(context.Background(), svc, req, streamID, lifecycleID); err != nil {
-			closePluginStream(streamID, err.Error())
+			closePluginStreamError(streamID, err)
 			return
 		}
 		closePluginStream(streamID, "")
@@ -193,6 +199,12 @@ func runStream(ctx context.Context, svc *service.Service, req rpcExecutorRequest
 		HostCallbackID: req.HostCallbackID,
 	})
 	if err != nil {
+		if statusCode, ok := hostCallHTTPStatus(err); ok && statusCode == http.StatusRequestEntityTooLarge {
+			// Local rejection from a nested interceptor (e.g. Kimi body-size
+			// limit): settle as a zero-cost rejection, never an upstream failure.
+			settleAttemptOrRelease(ctx, svc, reservation, plan.Model, "failed", service.SourceAttemptRejected, "request_too_large")
+			return &terminatedRequestError{msg: terminatedRequestMessage(err), status: http.StatusRequestEntityTooLarge}
+		}
 		settleAttemptOrRelease(ctx, svc, reservation, plan.Model, "failed", service.SourceAttemptFailed, formatAttemptError("upstream_stream_error", err))
 		return err
 	}
@@ -448,6 +460,25 @@ func emitPluginStreamChunk(streamID string, payload []byte) error {
 
 func closePluginStream(streamID, errMsg string) {
 	_, _ = callHost(pluginabi.MethodHostStreamClose, rpcStreamCloseRequest{StreamID: streamID, Error: strings.TrimSpace(errMsg)})
+}
+
+// requestScopedErrorCode mirrors pluginabi.ErrorCodeRequestScoped; the pinned
+// SDK predates that constant, and the code keeps the error request-scoped so
+// CPA never treats it as a credential failure.
+const requestScopedErrorCode = "request_scoped"
+
+// closePluginStreamError closes the stream with a structured error detail
+// whenever the error carries an HTTP status (e.g. a nested 413).
+func closePluginStreamError(streamID string, err error) {
+	errMsg := ""
+	var detail *pluginabi.Error
+	if err != nil {
+		errMsg = strings.TrimSpace(err.Error())
+		if status, ok := hostCallHTTPStatus(err); ok {
+			detail = pluginabi.NewError(requestScopedErrorCode, errMsg, status)
+		}
+	}
+	_, _ = callHost(pluginabi.MethodHostStreamClose, rpcStreamCloseRequest{StreamID: streamID, Error: errMsg, ErrorDetail: detail})
 }
 
 func closeHostModelStream(streamID string) error {

@@ -363,6 +363,22 @@ func (s *Service) bindAuthCaptureLocked(reservationID string, auth store.AuthIde
 	pending.hasAuth = true
 }
 
+// HasPriorAuthPick reports whether an auth pick was already bound to
+// reservationID, i.e. CPA is re-picking after an earlier attempt failed.
+func (s *Service) HasPriorAuthPick(reservationID string) bool {
+	if s == nil {
+		return false
+	}
+	reservationID = strings.TrimSpace(reservationID)
+	if reservationID == "" {
+		return false
+	}
+	s.authMu.Lock()
+	defer s.authMu.Unlock()
+	pending := s.authPending[reservationID]
+	return pending != nil && pending.active && pending.hasAuth
+}
+
 // bindPickLocked attributes a scheduler pick to reservationID when it is a
 // live unattributed reservation, else falls back to the oldest one.
 func (s *Service) bindPickLocked(reservationID string, auth store.AuthIdentity) {

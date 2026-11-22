@@ -304,6 +304,12 @@ func hashedSessionKey(key string) string {
 // headers are not forwarded upstream.
 const reservationHeader = "X-Credit-Manager-Reservation"
 
+// excludeProvidersHeader carries per-request provider exclusions injected by a
+// trusted nested plugin (e.g. kimi-compat) for scheduler.pick. It is honored
+// only alongside a non-empty reservation header and is stripped here so
+// clients can never spoof it.
+const excludeProvidersHeader = "X-Credit-Manager-Exclude-Providers"
+
 // forwardHeaders returns a copy of client headers for the nested host call,
 // carrying the plugin's session key and reservation ID.
 func forwardHeaders(headers http.Header, body []byte, reservationID string) http.Header {
@@ -324,6 +330,7 @@ func withSessionAffinityHeader(headers http.Header, body []byte) http.Header {
 	// Never trust client-supplied plugin control headers.
 	out.Del(sessionAffinityHeader)
 	out.Del(reservationHeader)
+	out.Del(excludeProvidersHeader)
 	primary, fallback := sessionKeysFromRequest(headers, body)
 	if v := hashedSessionKey(primary); v != "" {
 		if f := hashedSessionKey(fallback); f != "" {
