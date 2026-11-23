@@ -1,11 +1,16 @@
 package service
 
 import (
-	"encoding/json"
-	"strings"
+	"github.com/yuluo688/credit-manager/internal/requestmeta"
 )
 
 func estimateTokens(body []byte, defaultOutput, maxTotal int64) (input, output int64) {
+	return estimateTokensWithLimit(body, extractOutputLimit(body), defaultOutput, maxTotal)
+}
+
+// estimateTokensWithLimit applies the reserve ceiling to an already extracted
+// protocol output limit.
+func estimateTokensWithLimit(body []byte, explicitOutput, defaultOutput, maxTotal int64) (input, output int64) {
 	output = defaultOutput
 	if body == nil {
 		input = 1
@@ -14,8 +19,8 @@ func estimateTokens(body []byte, defaultOutput, maxTotal int64) (input, output i
 		input = int64(len(body)/2) + 1
 	}
 	// Prefer explicit protocol limits when present.
-	if explicit := extractOutputLimit(body); explicit > 0 {
-		output = explicit
+	if explicitOutput > 0 {
+		output = explicitOutput
 	}
 	if input > maxTotal {
 		input = maxTotal
@@ -41,70 +46,59 @@ func estimateTokens(body []byte, defaultOutput, maxTotal int64) (input, output i
 	return input, output
 }
 
-func extractModel(body []byte) string {
-	return extractString(body, "model")
+// requestMetadata decodes the body once, on first use, so paths that reject a
+// request before reading any field (a supplied model that is explicitly
+// unpriced) never touch the body. The body stays unmodified while it is in use.
+type requestMetadata struct {
+	body   []byte
+	fields requestmeta.Metadata
+	loaded bool
 }
 
-func extractServiceTier(body []byte) string {
-	return extractString(body, "service_tier", "tier")
+func readRequestMetadata(body []byte) *requestMetadata {
+	return &requestMetadata{body: body}
 }
 
-func extractString(body []byte, keys ...string) string {
-	var root map[string]any
-	if err := json.Unmarshal(body, &root); err != nil {
-		return ""
+func (m *requestMetadata) get() requestmeta.Metadata {
+	if !m.loaded {
+		m.fields = requestmeta.Read(m.body)
+		m.loaded = true
 	}
-	for _, key := range keys {
-		if value, ok := root[key].(string); ok && strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
+	return m.fields
 }
 
-func extractOutputLimit(body []byte) int64 {
-	var root map[string]any
-	if err := json.Unmarshal(body, &root); err != nil {
-		return 0
-	}
+func (m *requestMetadata) model() string {
+	return m.get().String("model")
+}
+
+func (m *requestMetadata) serviceTier() string {
+	return m.get().String("service_tier", "tier")
+}
+
+// outputLimit mirrors the legacy scan: the first positive *float* wins and its
+// truncated value is returned as-is, so 0.1 stops the scan with 0 rather than
+// falling through to a later key.
+func (m *requestMetadata) outputLimit() int64 {
+	fields := m.get()
 	for _, key := range []string{"max_tokens", "max_output_tokens", "max_completion_tokens"} {
-		if value, ok := root[key]; ok {
-			switch typed := value.(type) {
-			case float64:
-				if typed > 0 {
-					return int64(typed)
-				}
-			case int64:
-				if typed > 0 {
-					return typed
-				}
-			case int:
-				if typed > 0 {
-					return int64(typed)
-				}
-			}
+		if limit, ok := fields.Float(key); ok && limit > 0 {
+			return int64(limit)
 		}
 	}
-	if gen, ok := root["generationConfig"].(map[string]any); ok {
-		if value, ok := gen["maxOutputTokens"].(float64); ok && value > 0 {
-			return int64(value)
-		}
+	if limit, ok := fields.Object("generationConfig").Float("maxOutputTokens"); ok && limit > 0 {
+		return int64(limit)
 	}
 	return 0
 }
 
-func extractImageCount(body []byte) int64 {
+// imageCount mirrors the legacy scan: a key whose truncated count is not
+// positive is skipped, so n=0.1 falls through to n_images.
+func (m *requestMetadata) imageCount() int64 {
 	const maxImages int64 = 32
-	if len(body) == 0 {
-		return 1
-	}
-	var root map[string]any
-	if err := json.Unmarshal(body, &root); err != nil {
-		return 1
-	}
+	fields := m.get()
 	for _, key := range []string{"n", "n_images", "num_images", "image_count"} {
-		if value, ok := root[key]; ok {
-			if count := positiveInt64(value); count > 0 {
+		if value, ok := fields.Float(key); ok && value > 0 {
+			if count := int64(value); count > 0 {
 				if count > maxImages {
 					return maxImages
 				}
@@ -115,24 +109,14 @@ func extractImageCount(body []byte) int64 {
 	return 1
 }
 
-func positiveInt64(value any) int64 {
-	switch typed := value.(type) {
-	case float64:
-		if typed > 0 {
-			return int64(typed)
-		}
-	case int64:
-		if typed > 0 {
-			return typed
-		}
-	case int:
-		if typed > 0 {
-			return int64(typed)
-		}
-	case json.Number:
-		if parsed, err := typed.Int64(); err == nil && parsed > 0 {
-			return parsed
-		}
-	}
-	return 0
+func extractModel(body []byte) string {
+	return readRequestMetadata(body).model()
+}
+
+func extractServiceTier(body []byte) string {
+	return readRequestMetadata(body).serviceTier()
+}
+
+func extractOutputLimit(body []byte) int64 {
+	return readRequestMetadata(body).outputLimit()
 }

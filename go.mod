@@ -3,6 +3,7 @@ module github.com/yuluo688/credit-manager
 go 1.26.10
 
 require (
+	github.com/MoeForge/moego v0.1.0-alpha.4
 	github.com/router-for-me/CLIProxyAPI/v8 v8.0.47
 	golang.org/x/sys v0.48.0
 	gopkg.in/yaml.v3 v3.0.1
