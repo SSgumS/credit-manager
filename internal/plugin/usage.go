@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/yuluo688/credit-manager/internal/money"
+	"github.com/yuluo688/credit-manager/internal/requestmeta"
 	"github.com/yuluo688/credit-manager/internal/service"
 	"github.com/yuluo688/credit-manager/internal/store"
 
@@ -266,10 +267,11 @@ func usageMetricsFromStream(body []byte, startedAt, firstChunkAt, completedAt ti
 }
 
 func usageMetrics(body []byte, startedAt, firstChunkAt, completedAt time.Time, result string) store.UsageMetrics {
+	fields := requestmeta.Read(body)
 	metrics := store.UsageMetrics{
-		Tier:              optionalString(requestString(body, "service_tier", "tier")),
+		Tier:              optionalString(fields.String("service_tier", "tier")),
 		Result:            optionalString(result),
-		ThinkingIntensity: optionalString(requestNestedString(body, []string{"reasoning", "effort"}, []string{"thinking", "effort"}, []string{"reasoning_effort"})),
+		ThinkingIntensity: optionalString(fields.NestedString([]string{"reasoning", "effort"}, []string{"thinking", "effort"}, []string{"reasoning_effort"})),
 	}
 	if !startedAt.IsZero() && !completedAt.IsZero() && !completedAt.Before(startedAt) {
 		generationDuration := completedAt.Sub(startedAt)
@@ -280,41 +282,6 @@ func usageMetrics(body []byte, startedAt, firstChunkAt, completedAt time.Time, r
 		metrics.FirstTokenLatency = &firstTokenLatency
 	}
 	return metrics
-}
-
-func requestString(body []byte, keys ...string) string {
-	var value map[string]any
-	if len(body) == 0 || json.Unmarshal(body, &value) != nil {
-		return ""
-	}
-	for _, key := range keys {
-		if text, ok := value[key].(string); ok && strings.TrimSpace(text) != "" {
-			return strings.TrimSpace(text)
-		}
-	}
-	return ""
-}
-
-func requestNestedString(body []byte, paths ...[]string) string {
-	var value any
-	if len(body) == 0 || json.Unmarshal(body, &value) != nil {
-		return ""
-	}
-	for _, path := range paths {
-		current := value
-		for _, key := range path {
-			object, ok := current.(map[string]any)
-			if !ok {
-				current = nil
-				break
-			}
-			current = object[key]
-		}
-		if text, ok := current.(string); ok && strings.TrimSpace(text) != "" {
-			return strings.TrimSpace(text)
-		}
-	}
-	return ""
 }
 
 func optionalString(value string) *string {

@@ -48,9 +48,10 @@ func overlayParsedServiceTier(metrics store.UsageMetrics, parsed usageparse.Resu
 }
 
 func (s *Service) BuildReservePlan(ctx context.Context, model string, body []byte) (ReservePlan, error) {
+	meta := readRequestMetadata(body)
 	model = strings.TrimSpace(model)
 	if model == "" {
-		model = extractModel(body)
+		model = meta.model()
 	}
 	if model == "" {
 		return ReservePlan{}, fmt.Errorf("%w: model is required", store.ErrInvalidArgument)
@@ -88,7 +89,10 @@ func (s *Service) BuildReservePlan(ctx context.Context, model string, body []byt
 		return ReservePlan{}, err
 	}
 	if plan.Price.IsPerImage() {
-		images := extractImageCount(body)
+		images := int64(1)
+		if len(body) > 0 {
+			images = meta.imageCount()
+		}
 		plan.ImageCount = images
 		plan.TokenEstimate = images
 		cost, err := money.Cost(money.TokenUsage{Images: images}, plan.Price)
@@ -98,7 +102,7 @@ func (s *Service) BuildReservePlan(ctx context.Context, model string, body []byt
 		plan.Amount = cost
 		return plan, nil
 	}
-	inputEst, outputEst := estimateTokens(body, s.cfg.Limits.DefaultOutputReserve, s.cfg.Limits.MaxTokenEstimate)
+	inputEst, outputEst := estimateTokensWithLimit(body, meta.outputLimit(), s.cfg.Limits.DefaultOutputReserve, s.cfg.Limits.MaxTokenEstimate)
 	if err := s.cfg.ValidateTokenEstimate(inputEst + outputEst); err != nil {
 		return ReservePlan{}, err
 	}
@@ -106,7 +110,7 @@ func (s *Service) BuildReservePlan(ctx context.Context, model string, body []byt
 	plan.OutputEstimate = outputEst
 	plan.TokenEstimate = inputEst + outputEst
 	usage := money.TokenUsage{Input: inputEst, Output: outputEst}
-	cost, err := money.CostFor(usage, money.SelectPrice(plan.Price, money.ServiceTiers(plan.Tiers), usage, extractServiceTier(body)), plan.Model, "")
+	cost, err := money.CostFor(usage, money.SelectPrice(plan.Price, money.ServiceTiers(plan.Tiers), usage, meta.serviceTier()), plan.Model, "")
 	if err != nil {
 		return ReservePlan{}, err
 	}
