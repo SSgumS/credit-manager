@@ -32,6 +32,9 @@ func Routes() []pluginapi.ManagementRoute {
 		{http.MethodPost, "credit-manager/keys/reset-spend"},
 		{http.MethodPost, "credit-manager/pricing"},
 		{http.MethodGet, "credit-manager/pricing"},
+		// Effective snapshot endpoint: the keeper sync's only pricing source;
+		// raw rulebook interpretation stays forbidden keeper-side (ref: DL-005).
+		{http.MethodPost, "credit-manager/pricing/effective"},
 		{http.MethodPost, "credit-manager/pricing/enabled"},
 		{http.MethodPost, "credit-manager/pricing/delete"},
 		{http.MethodGet, "credit-manager/usage"},
@@ -154,6 +157,8 @@ func Handle(ctx context.Context, req pluginapi.ManagementRequest) (pluginapi.Man
 		return putPricing(ctx, svc, req.Body)
 	case req.Method == http.MethodGet && path == "credit-manager/pricing":
 		return listPricing(ctx, svc)
+	case req.Method == http.MethodPost && path == "credit-manager/pricing/effective":
+		return postPricingEffective(ctx, svc, req.Body)
 	case req.Method == http.MethodPost && path == "credit-manager/pricing/enabled":
 		return setPricingEnabled(ctx, svc, req.Body)
 	case req.Method == http.MethodPost && path == "credit-manager/pricing/delete":

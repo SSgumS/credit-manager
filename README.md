@@ -276,6 +276,7 @@ http://<CPA_HOST>:8317/v0/management/credit-manager
 | POST / GET | `/pricing` | 创建、更新或列出价格规则 |
 | POST | `/pricing/enabled` | 启停价格规则及对应模型 |
 | POST | `/pricing/delete` | 删除价格规则 |
+| POST | `/pricing/effective` | 返回全部请求模型的有效定价快照（分层、计费方式、缓存、按图计费、策略状态）及确定性 sha256 revision；单次一致性读事务计算，供 keeper 同步计价使用 |
 | GET | `/balance?key_id=` | 查询 Key 余额与限额 |
 | GET | `/usage` | 查询分页用量明细 |
 | GET | `/usage/summary` | 按 Key 与模型汇总用量 |
